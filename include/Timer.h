@@ -8,8 +8,8 @@ class Timer {
 public:
     Timer() : m_start(std::chrono::high_resolution_clock::now()) {}
     ~Timer() {
-        auto m_end = std::chrono::high_resolution_clock::now();
-        std::chrono::duration<float> duration = m_end - m_start;
+        auto end = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<float> duration = end - m_start;
         std::cout << "耗时 " << duration.count() << " 秒" << std::endl;
     }
 

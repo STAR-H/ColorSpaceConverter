@@ -10,7 +10,7 @@
 
 class ThreadPool {
 public:
-    ThreadPool(size_t);
+    ThreadPool(size_t threads);
     template<class F> void enqueue(F f);
     ~ThreadPool();
 

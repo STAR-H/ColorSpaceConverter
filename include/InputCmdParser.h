@@ -9,7 +9,7 @@ class InputCmdParser {
 public:
     InputCmdParser(int& argc, const char** argv) {
         for (int i = 1; i < argc; ++i) {
-            m_tokens.push_back(std::string(argv[i]));
+            m_tokens.emplace_back(argv[i]);
         }
     }
 

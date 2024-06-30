@@ -17,7 +17,7 @@ private:
     uint m_width;
     uint m_height;
     uint m_dataSize;
-    void* m_data;
+    uchar* m_data;
 };
 
 #endif // CONVERTCOLORSPACE_H
