@@ -1,65 +1,85 @@
-#include <opencv2/imgcodecs.hpp>
-#include <opencv2/opencv.hpp>
-
-#include <sys/stat.h>
 #include <dirent.h>
-#include <cassert>
+#include <sys/stat.h>
 
-#include <string>
 #include <algorithm>
-#include <vector>
-#include <queue>
-#include <thread>
-#include <mutex>
+#include <cassert>
+#include <chrono>
 #include <condition_variable>
 #include <functional>
-#include <chrono>
 #include <iostream>
+#include <mutex>
+#include <opencv2/imgcodecs.hpp>
+#include <opencv2/opencv.hpp>
+#include <queue>
+#include <string>
+#include <thread>
+#include <vector>
 
-struct ImageInfo {
-    std::string format;
-    uint width;
-    uint height;
+/**
+ * @brief Structure to store image information.
+ */
+struct ImageInfo
+{
+    std::string format; ///< Image format
+    uint width;         ///< Image width
+    uint height;        ///< Image height
 };
 
-class Timer {
-public:
+/**
+ * @brief A simple timer class to measure elapsed time.
+ */
+class Timer
+{
+   public:
     Timer() : m_start(std::chrono::high_resolution_clock::now()) {}
-    ~Timer() {
+    ~Timer()
+    {
         auto end = std::chrono::high_resolution_clock::now();
         std::chrono::duration<float> duration = end - m_start;
-        std::cout << "耗时 " << duration.count() << " 秒" << std::endl;
+        std::cout << "elapsed " << duration.count() << " s" << std::endl;
     }
 
-private:
-    std::chrono::time_point<std::chrono::high_resolution_clock> m_start;
+   private:
+    std::chrono::time_point<std::chrono::high_resolution_clock> m_start; ///< Start time
 };
 
-class ThreadPool {
-public:
+/**
+ * @brief Thread pool to manage multiple threads.
+ */
+class ThreadPool
+{
+   public:
     ThreadPool(size_t threads = std::thread::hardware_concurrency()) : stop(false)
     {
-        for(size_t i = 0; i < threads; ++i)
+        for (size_t i = 0; i < threads; ++i)
             workers.emplace_back(
-                [this] {
-                    for(;;) {
+                [this]
+                {
+                    for (;;)
+                    {
                         std::function<void()> task;
                         {
                             std::unique_lock<std::mutex> lock(this->queue_mutex);
-                            this->condition.wait(lock,
-                                                 [this]{ return this->stop || !this->tasks.empty(); });
-                            if(this->stop && this->tasks.empty())
-                                return;
+                            this->condition.wait(lock, [this] { return this->stop || !this->tasks.empty(); });
+                            if (this->stop && this->tasks.empty()) return;
                             task = std::move(this->tasks.front());
                             this->tasks.pop();
                         }
                         task();
                     }
-                }
-            );
+                });
+    }
+    ~ThreadPool()
+    {
+        {
+            std::unique_lock<std::mutex> lock(queue_mutex);
+            stop = true;
+        }
+        condition.notify_all();
+        for (std::thread& worker : workers) worker.join();
     }
 
-    template<class F>
+    template <class F>
     void enqueue(F f)
     {
         {
@@ -69,30 +89,24 @@ public:
         condition.notify_one();
     }
 
-    ~ThreadPool()
-    {
-        {
-            std::unique_lock<std::mutex> lock(queue_mutex);
-            stop = true;
-        }
-        condition.notify_all();
-        for(std::thread &worker: workers)
-        worker.join();
-    }
-
-private:
-    std::vector<std::thread> workers;
-    std::queue<std::function<void()>> tasks;
-    std::mutex queue_mutex;
-    std::condition_variable condition;
-    bool stop;
+   private:
+    std::vector<std::thread> workers;        ///< Worker threads
+    std::queue<std::function<void()>> tasks; ///< Task queue
+    std::mutex queue_mutex;                  ///< Mutex for task queue
+    std::condition_variable condition;       ///< Condition variable for task queue
+    bool stop;                               ///< Flag to stop the thread pool
 };
 
-class InputCmdParser {
-public:
+/**
+ * @brief Command-line argument parser.
+ */
+class InputCmdParser
+{
+   public:
     InputCmdParser(int& argc, const char** argv)
     {
-        for (int i = 1; i < argc; ++i) {
+        for (int i = 1; i < argc; ++i)
+        {
             m_tokens.emplace_back(argv[i]);
         }
     }
@@ -100,23 +114,25 @@ public:
     const std::string GetCmdOption(const std::string& option) const
     {
         auto it = std::find(m_tokens.begin(), m_tokens.end(), option);
-        if (it != m_tokens.end() && ++it != m_tokens.end()) {
+        if (it != m_tokens.end() && ++it != m_tokens.end())
+        {
             return *it;
         }
         return "";
     }
 
-    bool CmdOptionExists(const std::string& option) const
-    {
-        return std::find(m_tokens.begin(), m_tokens.end(), option) != m_tokens.end();
-    }
+    bool CmdOptionExists(const std::string& option) const { return std::find(m_tokens.begin(), m_tokens.end(), option) != m_tokens.end(); }
 
-private:
-    std::vector<std::string> m_tokens;
+   private:
+    std::vector<std::string> m_tokens; ///< Command-line tokens
 };
 
-class ConvertColorSpace {
-public:
+/**
+ * @brief Class to handle color space conversions.
+ */
+class ConvertColorSpace
+{
+   public:
     ConvertColorSpace(uint width, uint height, uint dataSize);
     ~ConvertColorSpace();
 
@@ -124,15 +140,14 @@ public:
     cv::Mat ConvertBayerToJpeg(const void* pData, const std::string& pattern);
     void SaveImage(const std::string& fileName, const cv::Mat& img);
 
-private:
-    uint   m_width;
-    uint   m_height;
-    uint   m_dataSize;
-    uchar* m_data;
+   private:
+    uint m_width;    ///< Image width
+    uint m_height;   ///< Image height
+    uint m_dataSize; ///< Data size
+    uchar* m_data;   ///< Data buffer
 };
 
-ConvertColorSpace::ConvertColorSpace(uint width, uint height, uint dataSize)
-: m_width(width), m_height(height), m_dataSize(dataSize), m_data(nullptr)
+ConvertColorSpace::ConvertColorSpace(uint width, uint height, uint dataSize) : m_width(width), m_height(height), m_dataSize(dataSize), m_data(nullptr)
 {
     assert(m_dataSize > 0);
     m_data = new uchar[m_dataSize];
@@ -170,26 +185,37 @@ cv::Mat ConvertColorSpace::ConvertBayerToJpeg(const void* pData, const std::stri
     cv::Mat bayerImg8bit(m_height, m_width, CV_8UC1);
     cv::Mat bgrImg(m_height, m_width, CV_8UC3);
 
-    cv::convertScaleAbs(bayerImg10bit, bayerImg8bit, (float)(255/1023.0f));
+    cv::convertScaleAbs(bayerImg10bit, bayerImg8bit, (float)(255 / 1023.0f));
 
-    if (pattern == "rggb") {
+    if (pattern == "rggb")
+    {
         cv::cvtColor(bayerImg8bit, bgrImg, cv::COLOR_BayerBG2BGR);
-    } else if (pattern == "grbg") {
+    }
+    else if (pattern == "grbg")
+    {
         cv::cvtColor(bayerImg8bit, bgrImg, cv::COLOR_BayerGB2BGR);
-    } else if (pattern == "gbrg") {
+    }
+    else if (pattern == "gbrg")
+    {
         cv::cvtColor(bayerImg8bit, bgrImg, cv::COLOR_BayerGR2BGR);
-    } else if (pattern == "bggr") {
+    }
+    else if (pattern == "bggr")
+    {
         cv::cvtColor(bayerImg8bit, bgrImg, cv::COLOR_BayerRG2BGR);
     }
     return bgrImg;
 }
 
-void ConvertColorSpace::SaveImage(const std::string& fileName, const cv::Mat& img)
-{
-    cv::imwrite(fileName, img);
-}
+void ConvertColorSpace::SaveImage(const std::string& fileName, const cv::Mat& img) { cv::imwrite(fileName, img); }
 
-void ProcessImage(const std::string &fileName, const ImageInfo& imgInfo, const std::string &pattern)
+/**
+ * @brief Process the image and convert it to JPEG.
+ *
+ * @param fileName Name of the image file.
+ * @param imgInfo Information about the image.
+ * @param pattern Bayer pattern if the image format is Bayer.
+ */
+void ProcessImage(const std::string& fileName, const ImageInfo& imgInfo, const std::string& pattern)
 {
     struct stat stat_buf;
     int rc = stat(fileName.c_str(), &stat_buf);
@@ -221,7 +247,7 @@ void ProcessImage(const std::string &fileName, const ImageInfo& imgInfo, const s
         img = converter.ConvertBayerToJpeg(buffer, pattern);
     }
     else
-{
+    {
         std::cerr << "Unknown format: " << imgInfo.format << std::endl;
         delete[] buffer;
         return;
@@ -232,28 +258,35 @@ void ProcessImage(const std::string &fileName, const ImageInfo& imgInfo, const s
     delete[] buffer;
 }
 
+/**
+ * @brief Process the directory to find image files.
+ *
+ * @param dirName Name of the directory.
+ * @param format Format of the image files.
+ * @return Vector of file names.
+ */
 std::vector<std::string> ProcessDirectory(const std::string& dirName, const std::string& format)
 {
     std::vector<std::string> files;
-    DIR *dir = opendir(dirName.c_str());
+    DIR* dir = opendir(dirName.c_str());
     if (!dir)
     {
         std::cerr << "Unable to open the dir: " << dirName << std::endl;
         return files;
     }
 
-    auto isFileOfType = [](const std::string& fileName, const std::string& type)->bool {
+    auto isFileOfType = [](const std::string& fileName, const std::string& type) -> bool
+    {
         std::string suffix = fileName.substr(fileName.find_last_of(".") + 1);
-        std::transform(suffix.cbegin(), suffix.cend(), suffix.begin(), [](char c){return std::tolower(c);});
+        std::transform(suffix.cbegin(), suffix.cend(), suffix.begin(), [](char c) { return std::tolower(c); });
         if (suffix.find(type) != std::string::npos)
         {
             return true;
         }
-
         return false;
     };
 
-    struct dirent *entry;
+    struct dirent* entry;
     while ((entry = readdir(dir)) != nullptr)
     {
         if (entry->d_type == DT_REG)
@@ -274,14 +307,11 @@ std::vector<std::string> ProcessDirectory(const std::string& dirName, const std:
     return files;
 }
 
-int main(int argc, const char **argv)
+int main(int argc, const char** argv)
 {
     InputCmdParser input(argc, argv);
 
-    if (input.CmdOptionExists("-i") &&
-        input.CmdOptionExists("--format") &&
-        input.CmdOptionExists("--width") &&
-        input.CmdOptionExists("--height"))
+    if (input.CmdOptionExists("-i") && input.CmdOptionExists("--format") && input.CmdOptionExists("--width") && input.CmdOptionExists("--height"))
     {
         Timer timer;
         ImageInfo imgInfo;
@@ -295,7 +325,7 @@ int main(int argc, const char **argv)
             pattern = input.GetCmdOption("--pattern");
         }
         else
-    {
+        {
             throw std::invalid_argument("bayer format need --pattern");
             return EXIT_FAILURE;
         }
@@ -308,20 +338,22 @@ int main(int argc, const char **argv)
         if (rc == 0 && S_ISDIR(stat_buf.st_mode))
         {
             auto files = ProcessDirectory(inputFileName, imgInfo.format);
-            for (const auto& file: files)
+            for (const auto& file : files)
             {
-                pool.enqueue([file, imgInfo, pattern]{ProcessImage(file, imgInfo, pattern);});
+                pool.enqueue([file, imgInfo, pattern] { ProcessImage(file, imgInfo, pattern); });
             }
         }
         else
-    {
+        {
             ProcessImage(inputFileName, imgInfo, pattern);
         }
     }
     else
-{
+    {
         std::cerr << "Required parameters" << std::endl;
-        std::cerr << "Usage: " << argv[0] << " -i <input> --format <format> --width <width> --height <height> [--pattern <pattern>]" << std::endl;
+        std::cerr << "Usage: " << argv[0]
+                  << " -i <input> --format <format> --width <width> --height <height> [--pattern <pattern>]"
+                  << std::endl;
     }
 
     return 0;

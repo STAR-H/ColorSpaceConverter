@@ -7,5 +7,5 @@ find_package(OpenCV REQUIRED)
 
 include_directories(${OpenCV_INCLUDE_DIRS} include)
 
-add_executable(build src/main.cpp  src/ConvertColorSpace.cpp)
+add_executable(build src/main.cpp)
 target_link_libraries(build ${OpenCV_LIBS})
